@@ -24,6 +24,8 @@ const (
 )
 
 type (
+
+	// data model for mongoDB
 	todoModel struct {
 		ID        bson.ObjectId `bson:"_id,omitempty" json:"id"`
 		Title     string        `bson:"title" json:"title"`
@@ -31,6 +33,7 @@ type (
 		CreatedAt time.Time     `bson:"created_at" json:"created_at"`
 	}
 
+	// json data for frontend to consume
 	todo struct {
 		ID        string    `json:"id"`
 		Title     string    `json:"title"`
@@ -54,9 +57,10 @@ func checkErr(err error) {
 }
 
 func homeHandler(w http.ResponseWriter, r *http.Request) {
-	rnd.JSON(w, http.StatusOK, map[string]string{
+	err := rnd.JSON(w, http.StatusOK, map[string]string{
 		"message": "Welcome to the TODO API",
 	})
+	checkErr(err)
 }
 
 func main() {
@@ -92,6 +96,23 @@ func todoHandler() http.Handler {
 
 func fetchTodos(w http.ResponseWriter, r *http.Request) {
 	rnd.JSON(w, http.StatusOK, []todo{})
+
+	if err := db.C(collectionName).Find(nil).All(&[]todoModel{}); err != nil {
+		log.Println("Error fetching todos:", err)
+		rnd.JSON(w, http.StatusInternalServerError, map[string]string{"message": "Error fetching todos"})
+		return
+	}
+	todoList := []todo{}
+
+	for _, t := range []todoModel{} {
+		todoList = append(todoList, todo{
+			ID:        t.ID.Hex(),
+			Title:     t.Title,
+			Completed: t.Completed,
+			CreatedAt: t.CreatedAt,
+		})
+	}
+	rnd.JSON(w, http.StatusOK, renderer.M{"todos": todoList})
 }
 
 func createTodo(w http.ResponseWriter, r *http.Request) {
