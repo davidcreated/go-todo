@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 	"time"
@@ -46,7 +47,7 @@ func init() {
 	rnd = renderer.New()
 	sess, err := mgo.Dial(hostName)
 	checkErr(err)
-	sess.SetMode(mgo.Monotonic, true)
+	sess.SetMode(mgo.Monotonic, true) // Optional. Switch the session to a monotonic behavior.
 	db = sess.DB(dbName)
 }
 
@@ -56,6 +57,7 @@ func checkErr(err error) {
 	}
 }
 
+// used for testing the server is up and running
 func homeHandler(w http.ResponseWriter, r *http.Request) {
 	err := rnd.JSON(w, http.StatusOK, map[string]string{
 		"message": "Welcome to the TODO API",
@@ -63,6 +65,7 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 	checkErr(err)
 }
 
+// main function to start the server and set up routes
 func main() {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
@@ -85,6 +88,7 @@ func main() {
 	}()
 }
 
+// todoHandler sets up the routes for the /todo endpoint and returns a chi.Router
 func todoHandler() http.Handler {
 	rg := chi.NewRouter()
 	rg.Get("/", fetchTodos)
@@ -116,7 +120,37 @@ func fetchTodos(w http.ResponseWriter, r *http.Request) {
 }
 
 func createTodo(w http.ResponseWriter, r *http.Request) {
-	rnd.JSON(w, http.StatusNotImplemented, map[string]string{"message": "createTodo not implemented"})
+	var t todo
+
+	if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
+		rnd.JSON(w, http.StatusBadRequest, map[string]string{"message": "Invalid request payload"})
+		return
+	}
+
+	if t.Title == "" {
+		rnd.JSON(w, http.StatusBadRequest, map[string]string{"message": "Title is required"})
+		return
+	}
+
+	tm := todoModel{
+		ID:        bson.NewObjectId(),
+		Title:     t.Title,
+		Completed: false,
+		CreatedAt: time.Now(),
+	}
+
+	if err := db.C(collectionName).Insert(&tm); err != nil {
+		log.Println("Error creating todo:", err)
+		rnd.JSON(w, http.StatusInternalServerError, map[string]string{"message": "Error creating todo"})
+		return
+	}
+
+	rnd.JSON(w, http.StatusCreated, renderer.M{"todo": todo{
+		ID:        tm.ID.Hex(),
+		Title:     tm.Title,
+		Completed: tm.Completed,
+		CreatedAt: tm.CreatedAt,
+	}})
 }
 
 func updateTodo(w http.ResponseWriter, r *http.Request) {
